@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Timetable management — {{ site_settings.board_title }}{% endblock %}
+{% block content %}
+{% set active = 'timetable' %}
+<div class="shell">
+  {% include "_sidebar.html" with context %}
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin Control</span>
+        <h1>Timetable management</h1>
+        <p>Set the weekly lecture schedule once — the display screen automatically shows the current faculty status based on the day and time.</p>
+      </div>
+      <a href="{{ url_for('add_timetable') }}" class="btn btn-primary">+ Add timetable entry</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if entries %}
+    <div class="notice-list">
+      {% for e in entries %}
+      <div class="notice-row timetable-row-card">
+        <div class="stripe" style="background:var(--accent);"></div>
+        <div class="info">
+          <h3>{{ e.day }} · {{ e.time_range_label() }}</h3>
+          <div class="timetable-faculty-grid">
+            <div><span class="tag">1st Year</span> {{ e.year1_faculty }}</div>
+            <div><span class="tag">2nd Year</span> {{ e.year2_faculty }}</div>
+            <div><span class="tag">3rd Year</span> {{ e.year3_faculty }}</div>
+            <div><span class="tag">4th Year</span> {{ e.year4_faculty }}</div>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_timetable', entry_id=e.id) }}">Edit</a>
+          <form method="POST" action="{{ url_for('delete_timetable', entry_id=e.id) }}" onsubmit="return confirm('Delete this timetable entry permanently?');">
+            <button class="btn btn-ghost btn-sm btn-danger">Delete</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h3>No timetable entries yet</h3>
+      <p>Add the weekly lecture schedule and the display will automatically show who's teaching, based on the current day and time.</p>
+    </div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

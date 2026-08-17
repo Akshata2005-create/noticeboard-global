@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if entry else 'Add' }} timetable entry — {{ site_settings.board_title }}{% endblock %}
+{% block content %}
+{% set active = 'timetable' %}
+<div class="shell">
+  {% include "_sidebar.html" with context %}
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin Control</span>
+        <h1>{{ 'Edit timetable entry' if entry else 'Add timetable entry' }}</h1>
+        <p>One row = one lecture slot for one day. Fill in the weekly schedule once — no need to update it hour by hour.</p>
+      </div>
+      <a href="{{ url_for('timetable_list') }}" class="btn btn-ghost">← Back to timetable</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form class="form-card" method="POST">
+      <div class="field">
+        <label for="day">Day</label>
+        <select id="day" name="day">
+          {% for d in weekdays %}
+          <option value="{{ d }}" {{ 'selected' if (entry and entry.day == d) }}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="two-col">
+        <div class="field">
+          <label for="start_time">Start time</label>
+          <input type="time" id="start_time" name="start_time"
+                 value="{{ entry.start_time.strftime('%H:%M') if entry else '' }}" required>
+        </div>
+        <div class="field">
+          <label for="end_time">End time</label>
+          <input type="time" id="end_time" name="end_time"
+                 value="{{ entry.end_time.strftime('%H:%M') if entry else '' }}" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="year1_faculty">1st Year faculty</label>
+        <input type="text" id="year1_faculty" name="year1_faculty" placeholder="e.g. Prof. ABC"
+               value="{{ entry.year1_faculty if entry else '' }}" required>
+      </div>
+      <div class="field">
+        <label for="year2_faculty">2nd Year faculty</label>
+        <input type="text" id="year2_faculty" name="year2_faculty" placeholder="e.g. Prof. XYZ"
+               value="{{ entry.year2_faculty if entry else '' }}" required>
+      </div>
+      <div class="field">
+        <label for="year3_faculty">3rd Year faculty</label>
+        <input type="text" id="year3_faculty" name="year3_faculty" placeholder="e.g. Prof. Rajeshwari N"
+               value="{{ entry.year3_faculty if entry else '' }}" required>
+      </div>
+      <div class="field">
+        <label for="year4_faculty">4th Year faculty</label>
+        <input type="text" id="year4_faculty" name="year4_faculty" placeholder="e.g. Prof. PQR"
+               value="{{ entry.year4_faculty if entry else '' }}" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary">{{ 'Save changes' if entry else 'Add to timetable' }}</button>
+    </form>
+  </main>
+</div>
+{% endblock %}

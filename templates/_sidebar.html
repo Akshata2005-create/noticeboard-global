@@ -1,0 +1,24 @@
+<aside class="sidebar">
+  <div class="brand-block">
+    <span class="brand-mark"></span>
+    <div class="brand-text">
+      <span class="brand-eyebrow">Admin Control</span>
+      <span class="brand-name">{{ site_settings.board_title }}</span>
+    </div>
+  </div>
+  <nav class="nav-group">
+    <span class="nav-label">Content</span>
+    <a class="nav-link {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">Dashboard</a>
+    <a class="nav-link {{ 'active' if active=='add' }}" href="{{ url_for('add_notice') }}">Post notice</a>
+    <a class="nav-link {{ 'active' if active=='timetable' }}" href="{{ url_for('timetable_list') }}">Timetable management</a>
+    <span class="nav-label">Display</span>
+    <a class="nav-link" href="{{ url_for('display') }}" target="_blank">Open display screen ↗</a>
+    <span class="nav-label">Settings</span>
+    <a class="nav-link {{ 'active' if active=='settings' }}" href="{{ url_for('board_settings') }}">Board name & banner</a>
+    <a class="nav-link {{ 'active' if active=='password' }}" href="{{ url_for('change_password') }}">Change password</a>
+  </nav>
+  <div class="sidebar-footer">
+    <strong>{{ current_user.name }}</strong>
+    <a class="logout-link" href="{{ url_for('logout') }}">Sign out</a>
+  </div>
+</aside>

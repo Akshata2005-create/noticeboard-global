@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ site_settings.board_title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/display.css') }}?v={{ asset_version }}">
+</head>
+<body>
+
+<div class="board">
+  <header class="topbar {{ 'has-banner' if site_settings.banner_filename }}"
+    {% if site_settings.banner_filename %}
+    style="background-image: url('{{ url_for('static', filename='branding/' + site_settings.banner_filename) }}');"
+    {% endif %}>
+    <div class="topbar-scrim"></div>
+    <div class="topbar-content">
+      <div class="topbar-left">
+        <span class="pulse-dot"></span>
+        <span class="brand">{{ site_settings.board_title }}</span>
+      </div>
+      <div class="topbar-right">
+        <span id="clock">--:--</span>
+        <span class="idle-caption" id="idle-caption">Notices will appear here once posted</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="important-banner" id="important-banner"></div>
+
+  <main class="stage" id="stage">
+    <div class="stage-empty" id="stage-empty">
+      <div class="no-signal">NO ACTIVE NOTICES</div>
+      <p>Posts published from the admin portal will appear here.</p>
+    </div>
+  </main>
+
+  <div class="dots" id="dots"></div>
+
+  <footer class="ticker-wrap" id="ticker-wrap" style="display:none;">
+    <div class="ticker-label">IMPORTANT</div>
+    <div class="ticker-track">
+      <div class="ticker-content" id="ticker-content"></div>
+    </div>
+  </footer>
+</div>
+
+<div class="important-popup-overlay" id="important-popup-overlay">
+  <div class="important-popup-card" id="important-popup-card"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/display.js') }}?v={{ asset_version }}"></script>
+</body>
+</html>

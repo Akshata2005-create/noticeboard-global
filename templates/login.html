@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Sign in — {{ site_settings.board_title }}{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand-block" style="margin-bottom:6px;">
+      <span class="brand-mark"></span>
+      <div class="brand-text">
+        <span class="brand-eyebrow">Admin Control</span>
+        <span class="brand-name">{{ site_settings.board_title }}</span>
+      </div>
+    </div>
+    <div class="sub">Sign in to manage the display</div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

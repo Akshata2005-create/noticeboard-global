@@ -1,0 +1,659 @@
+/* ==========================================================================
+   KLS VDIT EEE Department — Smart Notice Board — Display screen
+   Optimized for full-screen HDMI/TV viewing distance
+   ========================================================================== */
+
+:root {
+  --bg: #0E141C;
+  --panel: #161E28;
+  --ink: #F5F6F3;
+  --ink-dim: #93A3B5;
+  --accent: #FFB627;
+  --border: #263140;
+
+  --cat-notice: #4C8DC4;
+  --cat-achievement: #D4A93A;
+  --cat-important: #D2564D;
+  --cat-event: #38A08A;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------- Top bar / department banner ---------- */
+.topbar {
+  position: relative;
+  flex-shrink: 0;
+  height: 96px;
+  background: var(--panel);
+  background-size: cover;
+  background-position: center;
+  z-index: 5;
+  overflow: hidden;
+  transition: height .7s cubic-bezier(.4,0,.2,1);
+}
+.topbar.has-banner { height: 148px; }
+
+/* Photo-mode: while an image/grid post is on screen, the topbar
+   collapses to a slim strip (just the clock) so the photo gets almost the
+   entire screen — like a real digital-signage poster, not a webpage with a
+   photo in it. It expands back to full size automatically for text posts. */
+.board.photo-mode .topbar {
+  height: 40px;
+}
+.board.photo-mode .topbar-content {
+  padding: 6px 30px;
+  align-items: center;
+}
+.board.photo-mode .brand { font-size: 13px; }
+.board.photo-mode .pulse-dot { width: 7px; height: 7px; }
+.board.photo-mode #clock { font-size: 11px; }
+.board.photo-mode .dots { opacity: 0.45; }
+
+/* Idle state: nothing posted — the banner/logo owns the whole screen instead
+   of showing a blank page. The stage, dots, and ticker are hidden entirely
+   so there's no leftover empty space beneath it. */
+.board.idle .topbar {
+  height: 100vh;
+}
+.board.idle .stage,
+.board.idle .dots,
+.board.idle .ticker-wrap {
+  display: none;
+}
+.board.idle .topbar-content {
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 18px;
+  text-align: center;
+  padding: 40px;
+}
+.board.idle .topbar-right { order: 2; }
+.board.idle .brand { font-size: 56px; }
+.board.idle #clock { font-size: 22px; }
+.board.idle .idle-caption {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+.idle-caption { display: none; }
+
+.topbar-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    rgba(14,20,28,0.35) 0%,
+    rgba(14,20,28,0.55) 45%,
+    rgba(14,20,28,0.92) 100%);
+  transition: background .7s ease;
+}
+.topbar:not(.has-banner) .topbar-scrim {
+  background: linear-gradient(180deg, rgba(14,20,28,0.9), rgba(14,20,28,0.98));
+}
+.board.idle .topbar-scrim {
+  background: linear-gradient(180deg, rgba(14,20,28,0.25) 0%, rgba(14,20,28,0.55) 65%, rgba(14,20,28,0.85) 100%);
+}
+.topbar-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 18px 44px;
+  transition: padding .7s ease;
+}
+.topbar-left { display: flex; align-items: center; gap: 14px; }
+.pulse-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(255,182,39, 0.6);
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255,182,39, 0.5); }
+  70% { box-shadow: 0 0 0 12px rgba(255,182,39, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,182,39, 0); }
+}
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  transition: font-size .7s ease;
+}
+#clock {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--ink-dim);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+/* ---------- Stage ---------- */
+.stage {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.stage-empty {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  text-align: center;
+  color: var(--ink-dim);
+}
+.no-signal {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+  margin-bottom: 10px;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .6s ease;
+  pointer-events: none;
+}
+.slide.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Media slides (image / grid) are laid out as a column: the
+   photo(s) get the top portion of the stage, and a solid caption bar sits
+   below in its own space — never on top of the photo, so text can never
+   overlap the image underneath it. */
+.slide-media-column {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+.slide-media-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: #05080C;
+}
+
+.slide-media-full {
+  position: absolute;
+  inset: 0;
+  background: #05080C;
+}
+.slide-media-full img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity .8s ease;
+}
+.slide-media-full img.shown { opacity: 1; }
+
+/* Grid display: exactly 2 photos, side by side, a clean 50% / 50% split.
+   A thin visible border sits between the two tiles (a small gap that
+   reveals the board's background colour underneath), so each photo reads
+   as its own distinct frame. Built as a single flexed row so both cells
+   always stretch to fill an equal half of the width. */
+.slide-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--border);
+}
+.grid-row {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  gap: 6px;
+}
+.slide-grid-cell {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #05080C;
+  min-width: 0;
+}
+/* object-fit: cover — always fills the tile completely, no letterboxing,
+   regardless of the notice's image_fit setting (which only applies to
+   single-image display type). */
+.slide-grid-cell img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* Solid caption bar below the photo(s) — title/date/category live here,
+   fully separated from the image so nothing ever overlaps it. */
+.caption-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 12px 40px;
+  background: var(--panel);
+  border-top: 3px solid var(--cat);
+  max-height: 96px;
+  overflow: hidden;
+}
+.caption-bar .slide-badge { margin-bottom: 0; padding: 5px 13px; font-size: 12px; flex-shrink: 0; }
+.caption-bar .slide-title {
+  font-size: 22px;
+  margin: 0;
+  max-width: 60%;
+  line-height: 1.25;
+  text-align: center;
+  /* keep a single-line title from ever pushing the bar taller / crowding the image */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.caption-bar .slide-meta { margin-top: 0; flex-shrink: 0; }
+/* When there's no title (title is optional when posting), the meta line —
+   which always carries the posted date — becomes the primary text. */
+.caption-bar.no-title .slide-meta { font-size: 15px; }
+
+/* Text-only slide — centered, typographic, institutional-announcement
+   style. Shows only the post's own title (if any) and message content —
+   no repeated department/board-title heading, since the topbar already
+   carries that once, above the stage. */
+.slide-text-wrap {
+  position: absolute;
+  inset: 0;
+  padding: 64px 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--cat) 8%, transparent), transparent 60%);
+}
+.slide-text {
+  font-size: 36px;
+  line-height: 1.6;
+  color: var(--ink);
+  max-width: 72%;
+  margin: 0 auto;
+  white-space: pre-line;
+}
+.slide-text-wrap .slide-title {
+  text-align: center;
+  margin: 0 auto 22px;
+  max-width: 82%;
+}
+.slide-text-wrap .slide-meta {
+  text-align: center;
+  margin-top: 34px;
+}
+
+/* Timetable ("current lecture status") slide — same centered, typographic
+   institutional look as the text slide, so it reads as part of the same
+   display, not a bolted-on separate screen. Rotates into the normal notice
+   rotation automatically whenever the current day/time matches a row the
+   admin entered in Timetable management. */
+.slide-timetable-wrap {
+  position: absolute;
+  inset: 0;
+  padding: 64px 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%);
+}
+.timetable-heading {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+.timetable-subheading {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 44px;
+}
+.timetable-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  max-width: 920px;
+}
+.timetable-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.timetable-row .year-label {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.timetable-row .faculty-name {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+.timetable-slot-time {
+  margin-top: 36px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+
+.slide-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 16px;
+  border-radius: 20px;
+  margin-bottom: 18px;
+  color: var(--cat);
+  background: color-mix(in srgb, var(--cat) 20%, #10151d);
+  border: 1px solid color-mix(in srgb, var(--cat) 55%, transparent);
+}
+.slide-badge::before {
+  content: "";
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--cat);
+}
+
+.slide-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 56px;
+  line-height: 1.15;
+  margin: 0 0 8px;
+  max-width: 90%;
+}
+
+.slide-meta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+  margin-top: 6px;
+}
+
+/* ---------- Rotation dots ---------- */
+.dots {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 66px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  z-index: 4;
+  pointer-events: none;
+}
+.dots .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(245,246,243,0.35);
+  transition: background .2s ease, transform .2s ease;
+}
+.dots .dot.current { background: var(--accent); transform: scale(1.3); }
+
+/* ---------- Important ticker (always visible, separated from rotation) ---------- */
+.ticker-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  background: var(--cat-important);
+  height: 58px;
+  z-index: 5;
+}
+.ticker-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: #A93830;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+.ticker-track {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.ticker-content {
+  display: inline-flex;
+  gap: 60px;
+  white-space: nowrap;
+  padding-left: 100%;
+  font-size: 19px;
+  font-weight: 600;
+  color: #fff;
+  animation: ticker-scroll 30s linear infinite;
+}
+.ticker-content span.item::after {
+  content: "•";
+  margin-left: 60px;
+  opacity: 0.6;
+}
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* ---------- Important popup — full-screen takeover shown once when an
+   "important" notice first goes live, for its configured duration ---------- */
+.important-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5,8,12,0.86);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .4s ease;
+}
+.important-popup-overlay.active { opacity: 1; pointer-events: auto; }
+
+.important-popup-card {
+  width: min(920px, 86vw);
+  max-height: 82vh;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--cat-important) 55%, var(--border));
+  border-radius: 20px;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.55), 0 0 0 6px color-mix(in srgb, var(--cat-important) 22%, transparent);
+  transform: scale(.92);
+  transition: transform .4s cubic-bezier(.2,.9,.3,1.2);
+  display: flex;
+  flex-direction: column;
+}
+.important-popup-overlay.active .important-popup-card { transform: scale(1); }
+
+.important-popup-flag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 28px;
+  background: var(--cat-important);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.important-popup-flag .siren {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #fff;
+  animation: pulse 1.1s infinite;
+  flex-shrink: 0;
+}
+.important-popup-media {
+  width: 100%;
+  max-height: 40vh;
+  background: #05080C;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.important-popup-media img {
+  width: 100%;
+  max-height: 40vh;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+.important-popup-body {
+  padding: 26px 32px 30px;
+  overflow-y: auto;
+}
+.important-popup-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1.2;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+.important-popup-text {
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-line;
+}
+.important-popup-meta {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+.important-popup-timerbar {
+  height: 4px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--cat-important) 70%, transparent);
+  transform-origin: left;
+  animation-name: important-timer-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes important-timer-shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ---------- Persistent important banner — pinned under the topbar; a
+   notice stays listed here after its popup ends, until an admin
+   deactivates/removes/expires it from the admin panel ---------- */
+.important-banner {
+  flex-shrink: 0;
+  display: none;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--cat-important) 14%, var(--bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--cat-important) 45%, var(--border));
+  z-index: 6;
+  max-height: 132px;
+  overflow-y: auto;
+}
+.important-banner.show { display: flex; }
+.important-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 26px;
+  font-size: 15px;
+  border-top: 1px solid color-mix(in srgb, var(--cat-important) 20%, transparent);
+}
+.important-banner-row:first-child { border-top: none; }
+.important-banner-row .tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: var(--cat-important);
+  padding: 3px 9px;
+  border-radius: 4px;
+}
+.important-banner-row .txt {
+  color: var(--ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .slide-title { font-size: 34px; }
+  .slide-text { font-size: 22px; max-width: 100%; }
+  .topbar { padding: 16px 22px; }
+  .caption-bar { padding: 16px 24px; }
+  .caption-bar .slide-title { font-size: 24px; }
+  .slide-text-wrap { padding: 48px 28px; }
+  .slide-timetable-wrap { padding: 48px 28px; }
+  .timetable-heading { font-size: 20px; }
+  .timetable-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .timetable-row .faculty-name { font-size: 24px; text-align: left; }
+}

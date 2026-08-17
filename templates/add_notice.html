@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if notice else 'Post' }} notice — {{ site_settings.board_title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+{% endblock %}
+{% block content %}
+{% set active = 'add' %}
+<div class="shell">
+  {% include "_sidebar.html" with context %}
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin Control</span>
+        <h1>{{ 'Edit notice' if notice else 'Post a notice' }}</h1>
+        <p>Text, a single image, or a 2-photo grid (side by side) — pick what fits the content.</p>
+      </div>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">← Back to dashboard</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form class="form-card" method="POST" enctype="multipart/form-data">
+      <div class="field">
+        <label for="title">Title <span class="optional-tag">(optional)</span></label>
+        <input type="text" id="title" name="title" value="{{ notice.title if notice else '' }}" placeholder="e.g. Mid-semester exam schedule released — leave blank to post without a title">
+        <div class="hint">A title is not required — post a photo or text on its own if you don't need one.</div>
+      </div>
+
+      <div class="field">
+        <label>Category</label>
+        <div class="radio-group" id="category-group">
+          {% for key, meta in categories.items() %}
+          <label class="radio-option {{ 'selected' if (notice and notice.category==key) or (not notice and key=='notice') }}">
+            <input type="radio" name="category" value="{{ key }}" {{ 'checked' if (notice and notice.category==key) or (not notice and key=='notice') }}>
+            {{ meta.label }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Display type</label>
+        <div class="radio-group" id="type-group">
+          {% for t in ['text', 'image', 'grid'] %}
+          <label class="radio-option {{ 'selected' if (notice and notice.display_type==t) or (not notice and t=='text') }}">
+            <input type="radio" name="display_type" value="{{ t }}" {{ 'checked' if (notice and notice.display_type==t) or (not notice and t=='text') }}>
+            {{ type_labels[t] }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field" id="text-field">
+        <label for="text_content">Text content</label>
+        <textarea id="text_content" name="text_content" placeholder="What should the screen say?">{{ notice.text_content if notice else '' }}</textarea>
+      </div>
+
+      <div class="field" id="image-field" style="display:none;">
+        <label for="images">Image</label>
+        <input type="file" id="images" name="images" accept="image/*">
+        <div class="hint" id="image-hint">Single image: upload one file. It will fill the entire display screen.</div>
+        {% if notice and notice.display_type == 'image' and notice.image_list() %}
+        <div class="hint">Currently: {{ notice.image_list() | length }} image(s) attached. Upload new files to replace them.</div>
+        {% endif %}
+        <div class="crop-thumb-strip" id="images-preview"></div>
+      </div>
+
+      <div class="field" id="grid-field" style="display:none;">
+        <label>Grid photos (exactly 2, shown side by side 50% / 50%)</label>
+        <div class="hint">
+          Both slots are required. Each photo fills its half of the screen clearly — this is capped at 2 photos
+          so images stay large and readable on the display.
+          {{ 'Leave a slot\'s file empty to keep its current photo.' if notice and notice.display_type == 'grid' else '' }}
+        </div>
+        <div class="grid-slots" id="grid-slots"></div>
+      </div>
+
+      <div class="field" id="caption-toggle-field" style="display:none;">
+        <label class="checkbox-option">
+          <input type="checkbox" id="show_caption" name="show_caption" value="1" {{ 'checked' if (notice and notice.show_caption is not sameas False) or not notice }}>
+          Show category, title &amp; posted-date bar under the photo(s)
+        </label>
+        <div class="hint">Untick this for a pure image — the photo(s) fill the entire screen with no badge, title, or date bar at all.</div>
+      </div>
+
+      <div class="field" id="fit-field" style="display:none;">
+        <label>How should photos be shown?</label>
+        <div class="radio-group" id="fit-group">
+          {% for key, label in fit_options.items() %}
+          <label class="radio-option {{ 'selected' if (notice and notice.image_fit==key) or (not notice and key=='contain') }}">
+            <input type="radio" name="image_fit" value="{{ key }}" {{ 'checked' if (notice and notice.image_fit==key) or (not notice and key=='contain') }}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="hint">"Show the whole photo" keeps every detail visible with no cropping. "Fill the screen" crops edges to remove borders. Publish, check the display screen, and switch this if it doesn't look right. (Grid photos always fill their tile completely, so this setting doesn't apply to grid mode.)</div>
+      </div>
+
+      <div class="two-col">
+        <div class="field">
+          <label for="priority">Priority</label>
+          <input type="number" id="priority" name="priority" value="{{ notice.priority if notice else 0 }}">
+          <div class="hint">Higher number shows earlier in rotation.</div>
+        </div>
+        <div class="field" id="duration-field">
+          <label for="duration_seconds">Seconds on screen</label>
+          <input type="number" id="duration_seconds" name="duration_seconds" min="3" value="{{ notice.duration_seconds if notice else 10 }}">
+          <div class="hint">How long this notice stays up during the normal rotation.</div>
+        </div>
+        <div class="field" id="popup-duration-field" style="display:none;">
+          <label for="popup_duration_seconds">Popup duration (seconds)</label>
+          <input type="number" id="popup_duration_seconds" name="popup_duration_seconds" min="5" value="{{ notice.popup_duration_seconds if notice else 15 }}">
+          <div class="hint">Important notices bypass the rotation, so this — not "Seconds on screen" — controls how long the full-screen popup alert stays up before it minimizes into the scrolling ticker.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="expires_at">Expires on (optional)</label>
+        <input type="date" id="expires_at" name="expires_at" value="{{ notice.expires_at.isoformat() if notice and notice.expires_at else '' }}">
+        <div class="hint">Leave blank to keep this posted indefinitely. Important notices bypass the rotation and scroll continuously until they expire or are hidden.</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">{{ 'Save changes' if notice else 'Publish to display' }}</button>
+    </form>
+  </main>
+</div>
+
+<div class="crop-modal" id="crop-modal">
+  <div class="crop-modal-inner">
+    <div class="crop-modal-header">
+      <span>Crop photo</span>
+    </div>
+    <div class="crop-modal-body">
+      <img id="crop-target-img" src="" alt="Photo to crop">
+    </div>
+    <div class="crop-modal-footer">
+      <div class="zoom-controls">
+        <button type="button" class="btn btn-ghost btn-sm" id="crop-zoom-out">− Zoom out</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="crop-zoom-in">+ Zoom in</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="crop-reset">Reset</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="crop-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="crop-apply">Apply crop</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/cropper-tool.js') }}"></script>
+<script>
+  const GRID_PHOTO_COUNT = {{ grid_photo_count }};
+  const EXISTING_GRID_IMAGES = {{ (notice.image_list() if (notice and notice.display_type == 'grid') else []) | tojson }};
+  const GRID_UPLOAD_URL_PREFIX = "{{ url_for('static', filename='uploads/') }}";
+
+  function wireRadioGroup(groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll('.radio-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        group.querySelectorAll('.radio-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        opt.querySelector('input').checked = true;
+        if (groupId === 'type-group') toggleTypeFields();
+        if (groupId === 'category-group') toggleCategoryFields();
+      });
+    });
+  }
+  // "Important" notices skip the rotation entirely (they popup + scroll in
+  // the ticker instead), so they get their own popup-duration field in
+  // place of the rotation's "seconds on screen" field.
+  function toggleCategoryFields() {
+    const categoryInput = document.querySelector('#category-group input:checked');
+    const isImportant = categoryInput && categoryInput.value === 'important';
+    document.getElementById('duration-field').style.display = isImportant ? 'none' : '';
+    document.getElementById('popup-duration-field').style.display = isImportant ? '' : 'none';
+  }
+  const HINTS = {
+    image: "Upload one photo. It will fill the entire display screen edge-to-edge."
+  };
+  function toggleTypeFields() {
+    const type = document.querySelector('#type-group input:checked').value;
+    document.getElementById('text-field').style.display = (type === 'text') ? '' : 'none';
+    document.getElementById('image-field').style.display = (type === 'image') ? '' : 'none';
+    document.getElementById('grid-field').style.display = (type === 'grid') ? '' : 'none';
+    document.getElementById('fit-field').style.display = (type === 'text' || type === 'grid') ? 'none' : '';
+    document.getElementById('caption-toggle-field').style.display = (type === 'text') ? 'none' : '';
+    const hint = document.getElementById('image-hint');
+    if (hint && HINTS[type]) hint.textContent = HINTS[type];
+  }
+  wireRadioGroup('category-group');
+  wireRadioGroup('type-group');
+  wireRadioGroup('fit-group');
+  toggleTypeFields();
+  toggleCategoryFields();
+
+  // ---- Grid slots — fixed at exactly 2 photos, rendered once on load ----
+  const gridSlotsWrap = document.getElementById('grid-slots');
+
+  function renderGridSlots() {
+    gridSlotsWrap.innerHTML = '';
+    for (let i = 1; i <= GRID_PHOTO_COUNT; i++) {
+      const existingFilename = EXISTING_GRID_IMAGES[i - 1] || '';
+      const slotId = 'photo_' + i;
+
+      const slotEl = document.createElement('div');
+      slotEl.className = 'grid-slot';
+
+      const label = document.createElement('span');
+      label.className = 'grid-slot-label';
+      label.textContent = 'Photo ' + i;
+      slotEl.appendChild(label);
+
+      if (existingFilename) {
+        const img = document.createElement('img');
+        img.className = 'grid-slot-preview';
+        img.src = GRID_UPLOAD_URL_PREFIX + existingFilename;
+        img.alt = 'Photo ' + i + ' preview';
+        slotEl.appendChild(img);
+      }
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.id = slotId;
+      fileInput.name = slotId;
+      fileInput.accept = 'image/*';
+      slotEl.appendChild(fileInput);
+
+      const existingInput = document.createElement('input');
+      existingInput.type = 'hidden';
+      existingInput.name = 'existing_' + slotId;
+      existingInput.value = existingFilename;
+      slotEl.appendChild(existingInput);
+
+      const previewStrip = document.createElement('div');
+      previewStrip.className = 'crop-thumb-strip';
+      previewStrip.id = slotId + '-preview';
+      slotEl.appendChild(previewStrip);
+
+      gridSlotsWrap.appendChild(slotEl);
+      wireCropField(slotId, slotId + '-preview');
+    }
+  }
+  renderGridSlots();
+
+  wireCropField('images', 'images-preview');
+
+  document.querySelector('form.form-card').addEventListener('submit', (e) => {
+    const type = document.querySelector('#type-group input:checked').value;
+    if (type === 'grid') {
+      const slots = document.querySelectorAll('#grid-slots .grid-slot');
+      const missing = Array.from(slots).filter((slot) => {
+        const fileInput = slot.querySelector('input[type=file]');
+        const existingInput = slot.querySelector('input[type=hidden]');
+        const hasFile = fileInput && fileInput.files.length > 0;
+        const hasExisting = existingInput && existingInput.value.trim() !== '';
+        return !hasFile && !hasExisting;
+      });
+      if (missing.length > 0) {
+        e.preventDefault();
+        alert('Grid mode needs exactly 2 photos — please add a photo for both slots.');
+      }
+      if (slots.length > GRID_PHOTO_COUNT) {
+        e.preventDefault();
+        alert('Grid mode allows a maximum of ' + GRID_PHOTO_COUNT + ' photos.');
+      }
+    }
+  });
+</script>
+{% endblock %}

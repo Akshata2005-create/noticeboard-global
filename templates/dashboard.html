@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ site_settings.board_title }}{% endblock %}
+{% block content %}
+{% set active = 'dashboard' %}
+<div class="shell">
+  {% include "_sidebar.html" with context %}
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin Control</span>
+        <h1>Dashboard</h1>
+        <p>Everything currently posted to the display board, in one place.</p>
+      </div>
+      <a href="{{ url_for('add_notice') }}" class="btn btn-primary">+ Post notice</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="stat-row">
+      <div class="stat-card accent-dot" style="--dot: var(--ink-dim)"><div class="n">{{ counts.total }}</div><div class="l">Total</div></div>
+      <div class="stat-card accent-dot" style="--dot: var(--cat-notice)"><div class="n">{{ counts.notice }}</div><div class="l">Notices</div></div>
+      <div class="stat-card accent-dot" style="--dot: var(--cat-achievement)"><div class="n">{{ counts.achievement }}</div><div class="l">Achievements</div></div>
+      <div class="stat-card accent-dot" style="--dot: var(--cat-important)"><div class="n">{{ counts.important }}</div><div class="l">Important</div></div>
+      <div class="stat-card accent-dot" style="--dot: var(--cat-event)"><div class="n">{{ counts.event }}</div><div class="l">Events</div></div>
+    </div>
+
+    <div class="filter-bar">
+      <a href="{{ url_for('dashboard', category='all', status=status_filter) }}" class="chip {{ 'active' if category_filter=='all' }}">All categories</a>
+      {% for key, meta in categories.items() %}
+      <a href="{{ url_for('dashboard', category=key, status=status_filter) }}" class="chip {{ 'active' if category_filter==key }}">{{ meta.label }}</a>
+      {% endfor %}
+      <span style="width:1px;background:var(--border);margin:0 4px;"></span>
+      <a href="{{ url_for('dashboard', category=category_filter, status='all') }}" class="chip {{ 'active' if status_filter=='all' }}">All status</a>
+      <a href="{{ url_for('dashboard', category=category_filter, status='active') }}" class="chip {{ 'active' if status_filter=='active' }}">Live</a>
+      <a href="{{ url_for('dashboard', category=category_filter, status='inactive') }}" class="chip {{ 'active' if status_filter=='inactive' }}">Hidden</a>
+    </div>
+
+    {% if notices %}
+    <div class="notice-list">
+      {% for n in notices %}
+      <div class="notice-row" style="--cat: {{ n.category_color() }}">
+        <div class="stripe"></div>
+        <div class="info">
+          <h3 {% if not n.title %}style="color:var(--ink-dim); font-style:italic;"{% endif %}>{{ n.title or 'Untitled notice' }}</h3>
+          <div class="meta">
+            <span class="tag">{{ n.category_label() }}</span>
+            <span>{{ type_labels.get(n.display_type, n.display_type) }}</span>
+            <span>·</span>
+            <span>by {{ n.created_by.name if n.created_by else 'unknown' }}</span>
+            <span>·</span>
+            <span>Posted {{ n.created_at.strftime('%d %b, %I:%M %p') if n.created_at else n.updated_at.strftime('%d %b, %I:%M %p') }}</span>
+            {% if n.updated_at and n.created_at and (n.updated_at - n.created_at).total_seconds() > 60 %}
+            <span>·</span>
+            <span>edited {{ n.updated_at.strftime('%d %b, %I:%M %p') }}</span>
+            {% endif %}
+            {% if n.is_expired() %}<span class="tag" style="--cat:#E0645C; color:var(--danger); background:#E0645C1a; border-color:#E0645C40;">Expired</span>{% endif %}
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-dim);">
+          <span class="status-dot {{ 'on' if n.is_active else 'off' }}"></span>
+          {{ 'Live' if n.is_active else 'Hidden' }}
+        </div>
+        <form method="POST" action="{{ url_for('toggle_notice', notice_id=n.id) }}">
+          <button class="btn btn-ghost btn-sm">{{ 'Hide' if n.is_active else 'Show' }}</button>
+        </form>
+        <div class="actions">
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_notice', notice_id=n.id) }}">Edit</a>
+          <form method="POST" action="{{ url_for('delete_notice', notice_id=n.id) }}" onsubmit="return confirm('Delete this notice permanently?');">
+            <button class="btn btn-ghost btn-sm btn-danger">Delete</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h3>Nothing here yet</h3>
+      <p>Post a notice, achievement, or event and it'll show up on the display board.</p>
+    </div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}
