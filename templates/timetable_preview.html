@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Timetable preview — {{ site_settings.board_title }}{% endblock %}
+{% block content %}
+{% set active = 'timetable' %}
+<div class="shell">
+  {% include "_sidebar.html" with context %}
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin Control</span>
+        <h1>Timetable preview</h1>
+        <p class="hint">Review and correct the extracted timetable before publishing. The existing live timetable has not been changed yet.</p>
+      </div>
+      <a href="{{ url_for('timetable_list') }}" class="btn btn-ghost">← Cancel</a>
+    </div>
+
+    <div class="flash-stack">
+      <div class="flash success">
+        {{ 'OCR extraction' if used_ocr else 'Excel import' }} completed for <strong>{{ year }} — {{ semester }}</strong>.
+        {{ entries|length }} class periods were found.
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('publish_timetable_preview') }}" id="preview-form">
+      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="semester" value="{{ semester }}">
+      <input type="hidden" name="source_filename" value="{{ source_filename }}">
+      <input type="hidden" name="used_ocr" value="{{ '1' if used_ocr else '0' }}">
+      <input type="hidden" name="entries_json" id="entries_json">
+
+      <section class="form-card">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">{{ year }}</span>
+            <h2>{{ semester }} — extracted timetable</h2>
+          </div>
+          <span class="optional-tag">{{ source_filename }}</span>
+        </div>
+
+        <div class="table-wrap" style="overflow-x:auto;">
+          <table class="data-table" id="preview-table" style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>Day</th><th>Start</th><th>End</th><th>Subject code</th><th>Subject title</th><th>Faculty</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="actions" style="margin-top:18px;display:flex;gap:10px;align-items:center;">
+          <button type="button" class="btn btn-ghost" id="add-row">+ Add row</button>
+          <button type="submit" class="btn btn-primary">Review complete — Publish timetable</button>
+        </div>
+        <p class="hint" style="margin-top:10px;">Publishing will replace the previous timetable for this semester and make this semester active for the selected year. Other years are unaffected.</p>
+      </section>
+    </form>
+  </main>
+</div>
+
+<script>
+const initialRows = {{ entries|tojson }};
+const days = {{ weekdays|tojson }};
+const tbody = document.querySelector('#preview-table tbody');
+const hidden = document.getElementById('entries_json');
+
+function input(value, cls='') {
+  const el = document.createElement('input');
+  el.type = 'text'; el.value = value || ''; el.className = cls;
+  el.style.width = '100%'; el.style.boxSizing = 'border-box';
+  return el;
+}
+function select(value) {
+  const el = document.createElement('select'); el.style.width='100%';
+  days.forEach(d => { const o = new Option(d,d); if (d===value) o.selected=true; el.add(o); });
+  return el;
+}
+function addRow(row={}) {
+  const tr=document.createElement('tr');
+  const tdDay=document.createElement('td'), tdStart=document.createElement('td'), tdEnd=document.createElement('td'), tdCode=document.createElement('td'), tdTitle=document.createElement('td'), tdFaculty=document.createElement('td'), tdAction=document.createElement('td');
+  [tdDay,tdStart,tdEnd,tdCode,tdTitle,tdFaculty,tdAction].forEach(td=>{td.style.padding='8px';td.style.borderTop='1px solid rgba(255,255,255,.08)';});
+  tdDay.appendChild(select(row.day || 'Monday'));
+  tdStart.appendChild(input(row.start_time || '09:00'));
+  tdEnd.appendChild(input(row.end_time || '10:00'));
+  tdCode.appendChild(input(row.subject_code));
+  tdTitle.appendChild(input(row.subject_title));
+  tdFaculty.appendChild(input(row.teacher_name));
+  const del=document.createElement('button'); del.type='button'; del.className='btn btn-ghost btn-sm btn-danger'; del.textContent='Remove'; del.onclick=()=>tr.remove(); tdAction.appendChild(del);
+  tr.append(tdDay,tdStart,tdEnd,tdCode,tdTitle,tdFaculty,tdAction); tbody.appendChild(tr);
+}
+initialRows.forEach(addRow);
+document.getElementById('add-row').onclick=()=>addRow({});
+document.getElementById('preview-form').addEventListener('submit', e=>{
+  const rows=[]; let invalid=false;
+  [...tbody.rows].forEach(tr=>{
+    const vals=[...tr.querySelectorAll('input,select')].map(x=>x.value.trim());
+    const [day,start,end,code,title,faculty]=vals;
+    if (!day || !start || !end) { invalid=true; return; }
+    if (end <= start) { invalid=true; return; }
+    rows.push({day,start_time:start,end_time:end,subject_code:code,subject_title:title,teacher_name:faculty});
+  });
+  if (!rows.length || invalid) { e.preventDefault(); alert('Please correct all rows. Day, start time and end time are required, and end time must be later than start time.'); return; }
+  hidden.value=JSON.stringify(rows);
+});
+</script>
+{% endblock %}

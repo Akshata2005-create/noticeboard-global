@@ -13,7 +13,6 @@
       <div>
         <span class="eyebrow">Admin Control</span>
         <h1>{{ 'Edit notice' if notice else 'Post a notice' }}</h1>
-        <p>Text, a single image, or a 2-photo grid (side by side) — pick what fits the content.</p>
       </div>
       <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">← Back to dashboard</a>
     </div>
@@ -31,8 +30,7 @@
     <form class="form-card" method="POST" enctype="multipart/form-data">
       <div class="field">
         <label for="title">Title <span class="optional-tag">(optional)</span></label>
-        <input type="text" id="title" name="title" value="{{ notice.title if notice else '' }}" placeholder="e.g. Mid-semester exam schedule released — leave blank to post without a title">
-        <div class="hint">A title is not required — post a photo or text on its own if you don't need one.</div>
+        <input type="text" id="title" name="title" value="{{ notice.title if notice else '' }}" placeholder="Title (optional)">
       </div>
 
       <div class="field">
@@ -50,7 +48,7 @@
       <div class="field">
         <label>Display type</label>
         <div class="radio-group" id="type-group">
-          {% for t in ['text', 'image', 'grid'] %}
+          {% for t in ['text', 'image', 'grid', 'video'] %}
           <label class="radio-option {{ 'selected' if (notice and notice.display_type==t) or (not notice and t=='text') }}">
             <input type="radio" name="display_type" value="{{ t }}" {{ 'checked' if (notice and notice.display_type==t) or (not notice and t=='text') }}>
             {{ type_labels[t] }}
@@ -67,21 +65,39 @@
       <div class="field" id="image-field" style="display:none;">
         <label for="images">Image</label>
         <input type="file" id="images" name="images" accept="image/*">
-        <div class="hint" id="image-hint">Single image: upload one file. It will fill the entire display screen.</div>
         {% if notice and notice.display_type == 'image' and notice.image_list() %}
-        <div class="hint">Currently: {{ notice.image_list() | length }} image(s) attached. Upload new files to replace them.</div>
+        <div class="hint">Currently: {{ notice.image_list() | length }} image(s) attached.</div>
         {% endif %}
         <div class="crop-thumb-strip" id="images-preview"></div>
       </div>
 
+      <div class="field" id="video-field" style="display:none;">
+        <label for="video">Video</label>
+        <input type="file" id="video" name="video" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov">
+        {% if notice and notice.display_type == 'video' and notice.video_filename %}
+        <div class="hint">Currently: a video is attached.</div>
+        {% endif %}
+      </div>
+
       <div class="field" id="grid-field" style="display:none;">
-        <label>Grid photos (exactly 2, shown side by side 50% / 50%)</label>
-        <div class="hint">
-          Both slots are required. Each photo fills its half of the screen clearly — this is capped at 2 photos
-          so images stay large and readable on the display.
-          {{ 'Leave a slot\'s file empty to keep its current photo.' if notice and notice.display_type == 'grid' else '' }}
-        </div>
+        <label>Grid photos (2, side by side)</label>
         <div class="grid-slots" id="grid-slots"></div>
+      </div>
+
+      <div class="field" id="ocr-field" style="display:none;">
+        <label>Extract text from image/PDF (OCR) <span class="optional-tag">(optional · Text posts only)</span></label>
+        {% if ocr_available %}
+        <div class="ocr-panel">
+          <input type="file" id="ocr_file" accept=".jpg,.jpeg,.png,.webp,.pdf">
+          <button type="button" class="btn btn-ghost btn-sm" id="ocr-extract-btn">Extract Text</button>
+          <span id="ocr-status" class="ocr-status"></span>
+        </div>
+        <div class="hint">OCR is intentionally unavailable for Image, Grid, and Video posts. It only fills the Text content box.</div>
+        <input type="hidden" id="ocr_used" name="ocr_used" value="{{ '1' if notice and notice.ocr_used else '0' }}">
+        <input type="hidden" id="ocr_source_filename" name="ocr_source_filename" value="{{ notice.ocr_source_filename if notice and notice.ocr_source_filename else '' }}">
+        {% else %}
+        <div class="hint">OCR unavailable on this server.</div>
+        {% endif %}
       </div>
 
       <div class="field" id="caption-toggle-field" style="display:none;">
@@ -89,7 +105,6 @@
           <input type="checkbox" id="show_caption" name="show_caption" value="1" {{ 'checked' if (notice and notice.show_caption is not sameas False) or not notice }}>
           Show category, title &amp; posted-date bar under the photo(s)
         </label>
-        <div class="hint">Untick this for a pure image — the photo(s) fill the entire screen with no badge, title, or date bar at all.</div>
       </div>
 
       <div class="field" id="fit-field" style="display:none;">
@@ -102,31 +117,26 @@
           </label>
           {% endfor %}
         </div>
-        <div class="hint">"Show the whole photo" keeps every detail visible with no cropping. "Fill the screen" crops edges to remove borders. Publish, check the display screen, and switch this if it doesn't look right. (Grid photos always fill their tile completely, so this setting doesn't apply to grid mode.)</div>
       </div>
 
       <div class="two-col">
         <div class="field">
           <label for="priority">Priority</label>
           <input type="number" id="priority" name="priority" value="{{ notice.priority if notice else 0 }}">
-          <div class="hint">Higher number shows earlier in rotation.</div>
         </div>
         <div class="field" id="duration-field">
           <label for="duration_seconds">Seconds on screen</label>
           <input type="number" id="duration_seconds" name="duration_seconds" min="3" value="{{ notice.duration_seconds if notice else 10 }}">
-          <div class="hint">How long this notice stays up during the normal rotation.</div>
         </div>
         <div class="field" id="popup-duration-field" style="display:none;">
           <label for="popup_duration_seconds">Popup duration (seconds)</label>
           <input type="number" id="popup_duration_seconds" name="popup_duration_seconds" min="5" value="{{ notice.popup_duration_seconds if notice else 15 }}">
-          <div class="hint">Important notices bypass the rotation, so this — not "Seconds on screen" — controls how long the full-screen popup alert stays up before it minimizes into the scrolling ticker.</div>
         </div>
       </div>
 
       <div class="field">
         <label for="expires_at">Expires on (optional)</label>
         <input type="date" id="expires_at" name="expires_at" value="{{ notice.expires_at.isoformat() if notice and notice.expires_at else '' }}">
-        <div class="hint">Leave blank to keep this posted indefinitely. Important notices bypass the rotation and scroll continuously until they expire or are hidden.</div>
       </div>
 
       <button type="submit" class="btn btn-primary">{{ 'Save changes' if notice else 'Publish to display' }}</button>
@@ -161,6 +171,7 @@
   const GRID_PHOTO_COUNT = {{ grid_photo_count }};
   const EXISTING_GRID_IMAGES = {{ (notice.image_list() if (notice and notice.display_type == 'grid') else []) | tojson }};
   const GRID_UPLOAD_URL_PREFIX = "{{ url_for('static', filename='uploads/') }}";
+  const OCR_EXTRACT_URL = "{{ url_for('ocr_extract') }}";
 
   function wireRadioGroup(groupId) {
     const group = document.getElementById(groupId);
@@ -183,19 +194,18 @@
     document.getElementById('duration-field').style.display = isImportant ? 'none' : '';
     document.getElementById('popup-duration-field').style.display = isImportant ? '' : 'none';
   }
-  const HINTS = {
-    image: "Upload one photo. It will fill the entire display screen edge-to-edge."
-  };
+  const HINTS = {};
   function toggleTypeFields() {
     const type = document.querySelector('#type-group input:checked').value;
     document.getElementById('text-field').style.display = (type === 'text') ? '' : 'none';
     document.getElementById('image-field').style.display = (type === 'image') ? '' : 'none';
     document.getElementById('grid-field').style.display = (type === 'grid') ? '' : 'none';
-    document.getElementById('fit-field').style.display = (type === 'text' || type === 'grid') ? 'none' : '';
+    document.getElementById('video-field').style.display = (type === 'video') ? '' : 'none';
+    document.getElementById('fit-field').style.display = (type === 'text' || type === 'grid' || type === 'video') ? 'none' : '';
     document.getElementById('caption-toggle-field').style.display = (type === 'text') ? 'none' : '';
-    const hint = document.getElementById('image-hint');
-    if (hint && HINTS[type]) hint.textContent = HINTS[type];
-  }
+    const ocrField = document.getElementById('ocr-field');
+    if (ocrField) ocrField.style.display = (type === 'text') ? '' : 'none';
+      }
   wireRadioGroup('category-group');
   wireRadioGroup('type-group');
   wireRadioGroup('fit-group');
@@ -274,5 +284,44 @@
       }
     }
   });
+
+  // ---- Optional OCR ----
+  const ocrBtn = document.getElementById('ocr-extract-btn');
+  if (ocrBtn) {
+    ocrBtn.addEventListener('click', async () => {
+      const fileInput = document.getElementById('ocr_file');
+      const statusEl = document.getElementById('ocr-status');
+      if (!fileInput.files.length) {
+        statusEl.textContent = 'Please choose an image or PDF file first.';
+        statusEl.className = 'ocr-status error';
+        return;
+      }
+      const textArea = document.getElementById('text_content');
+      if (textArea.value.trim().length > 0) {
+        if (!confirm('This will replace the text you already typed with the extracted text. Continue?')) return;
+      }
+      statusEl.textContent = 'Extracting text…';
+      statusEl.className = 'ocr-status';
+      const formData = new FormData();
+      formData.append('ocr_file', fileInput.files[0]);
+      try {
+        const res = await fetch(OCR_EXTRACT_URL, { method: 'POST', body: formData });
+        const data = await res.json();
+        statusEl.textContent = data.message || '';
+        statusEl.className = 'ocr-status ' + (data.status === 'success' ? 'success' : (data.status === 'empty' ? '' : 'error'));
+        if (data.status === 'success') {
+          textArea.value = data.text;
+          document.getElementById('ocr_used').value = '1';
+          document.getElementById('ocr_source_filename').value = data.source_filename || '';
+                    if (data.too_long) {
+            statusEl.textContent += ` This text is long (${data.text.length} characters) for a readable display slide — consider shortening it before publishing.`;
+          }
+        }
+      } catch (err) {
+        statusEl.textContent = 'OCR could not process this file.';
+        statusEl.className = 'ocr-status error';
+      }
+    });
+  }
 </script>
 {% endblock %}

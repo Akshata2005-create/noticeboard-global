@@ -1,58 +1,179 @@
 {% extends "base.html" %}
-{% block title %}Timetable management — {{ site_settings.board_title }}{% endblock %}
+{% block title %}Manage Timetable — {{ site_settings.board_title }}{% endblock %}
 {% block content %}
 {% set active = 'timetable' %}
 <div class="shell">
   {% include "_sidebar.html" with context %}
-  <main class="main">
+  <main class="main timetable-page">
     <div class="page-head">
       <div>
         <span class="eyebrow">Admin Control</span>
-        <h1>Timetable management</h1>
-        <p>Set the weekly lecture schedule once — the display screen automatically shows the current faculty status based on the day and time.</p>
+        <h1>Manage Timetable</h1>
+        <p class="hint">Choose a year and semester, then enter the timetable directly. Everything stays saved until you reset or replace it.</p>
       </div>
-      <a href="{{ url_for('add_timetable') }}" class="btn btn-primary">+ Add timetable entry</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="flash-stack">
-        {% for category, message in messages %}
-          <div class="flash {{ category }}">{{ message }}</div>
-        {% endfor %}
-        </div>
-      {% endif %}
+      {% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% endwith %}
 
-    {% if entries %}
-    <div class="notice-list">
-      {% for e in entries %}
-      <div class="notice-row timetable-row-card">
-        <div class="stripe" style="background:var(--accent);"></div>
-        <div class="info">
-          <h3>{{ e.day }} · {{ e.time_range_label() }}</h3>
-          <div class="timetable-faculty-grid">
-            <div><span class="tag">1st Year</span> {{ e.year1_faculty }}</div>
-            <div><span class="tag">2nd Year</span> {{ e.year2_faculty }}</div>
-            <div><span class="tag">3rd Year</span> {{ e.year3_faculty }}</div>
-            <div><span class="tag">4th Year</span> {{ e.year4_faculty }}</div>
-          </div>
+    <section class="form-card" style="margin-bottom:18px;">
+      <div class="section-head">
+        <div><span class="eyebrow">Semester</span><h2>Choose year and semester</h2></div>
+        <span class="optional-tag">Manual entry</span>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label for="year-select">Year</label>
+          <select id="year-select">
+            {% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+          </select>
         </div>
-        <div class="actions">
-          <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_timetable', entry_id=e.id) }}">Edit</a>
-          <form method="POST" action="{{ url_for('delete_timetable', entry_id=e.id) }}" onsubmit="return confirm('Delete this timetable entry permanently?');">
-            <button class="btn btn-ghost btn-sm btn-danger">Delete</button>
-          </form>
+        <div class="field">
+          <label for="semester-select">Semester</label>
+          <select id="semester-select"></select>
         </div>
       </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <h3>No timetable entries yet</h3>
-      <p>Add the weekly lecture schedule and the display will automatically show who's teaching, based on the current day and time.</p>
-    </div>
-    {% endif %}
+    </section>
+
+    <form class="form-card timetable-matrix-card" method="POST" action="{{ url_for('save_timetable_matrix') }}" id="matrix-form">
+      <input type="hidden" name="year" value="{{ selected_year }}" id="matrix-year">
+      <input type="hidden" name="semester" value="{{ selected_semester }}" id="matrix-semester">
+      <input type="hidden" name="matrix_json" id="matrix-json">
+
+      <div class="section-head">
+        <div><span class="eyebrow">{{ selected_year }}</span><h2>{{ selected_semester }} timetable</h2></div>
+        <div class="semester-actions">
+          <span class="optional-tag">Fixed timings</span>
+        </div>
+      </div>
+
+      <div class="table-wrap timetable-visible-wrap">
+        <table class="data-table timetable-direct-matrix" id="timetable-grid">
+          <thead>
+            <tr>
+              <th class="day-head">Day</th>
+              {% for label in ["09:00–10:00", "10:00–11:00", "11:00–11:15", "11:15–12:15", "12:15–01:15", "01:15–02:00", "02:00–03:00", "03:00–04:00"] %}
+              <th>{{ label }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for day in weekdays %}
+            <tr data-day="{{ day }}">
+              <th class="day-head">{{ day }}</th>
+              {% for i in range(8) %}
+              {% set slot_start = ["09:00","10:00","11:00","11:15","12:15","13:15","14:00","15:00"][i] %}
+              {% set slot_end = ["10:00","11:00","11:15","12:15","13:15","14:00","15:00","16:00"][i] %}
+              {% set found = namespace(value='') %}
+              {% for e in entries %}
+                {% if e.day == day and e.start_time.strftime('%H:%M') == slot_start and e.end_time.strftime('%H:%M') == slot_end %}
+                  {% set found.value = (e.subject_code ~ (' - ' if e.subject_code and e.teacher_name else '') ~ (e.teacher_name or '')) %}
+                {% endif %}
+              {% endfor %}
+              <td><textarea class="matrix-cell" autocomplete="off" spellcheck="false" aria-label="{{ day }} {{ slot_start }}">{{ found.value|e }}</textarea></td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="matrix-actions">
+        <button type="submit" class="btn btn-primary">Save Timetable</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn">Reset Timetable</button>
+        <span class="hint">Click a cell and type. You can also paste the timetable entries directly from Excel/Sheets.</span>
+      </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('reset_timetable_matrix') }}" id="reset-form" style="display:none;">
+      <input type="hidden" name="year" value="{{ selected_year }}" id="reset-year">
+      <input type="hidden" name="semester" value="{{ selected_semester }}" id="reset-semester">
+    </form>
   </main>
 </div>
+
+<style>
+.timetable-page .form-card { max-width:none; width:100%; }
+.timetable-visible-wrap { overflow-x:hidden; width:100%; }
+.timetable-direct-matrix { width:100%; min-width:0; table-layout:fixed; }
+.timetable-direct-matrix th { white-space:normal; overflow-wrap:anywhere; }
+.timetable-direct-matrix th.day-head { width:8%; }
+.timetable-direct-matrix thead th:not(.day-head) { width:auto; font-size:12px; line-height:1.2; }
+.timetable-direct-matrix td { padding:6px; vertical-align:middle; }
+.matrix-cell {
+  width:100%; height:96px; min-height:96px; resize:none;
+  padding:10px 9px; border:1px solid rgba(255,255,255,.14); border-radius:8px;
+  background:rgba(255,255,255,.035); color:inherit; font:inherit; font-size:13px;
+  line-height:1.35; box-sizing:border-box; overflow:auto; white-space:pre-wrap;
+}
+.matrix-cell:focus { outline:2px solid #f0b429; border-color:transparent; background:rgba(255,255,255,.07); }
+.matrix-actions { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+#reset-btn { border-color:rgba(255,255,255,.18); }
+@media (max-width:1100px) {
+  .timetable-direct-matrix thead th:not(.day-head) { font-size:10.5px; }
+  .matrix-cell { font-size:12px; height:88px; min-height:88px; padding:8px 7px; }
+  .timetable-direct-matrix th.day-head { width:9%; }
+}
+</style>
+
+<script>
+const YEAR_SEMESTER_MAP = {{ year_semester_map | tojson }};
+const selectedYear = {{ selected_year | tojson }};
+const selectedSemester = {{ selected_semester | tojson }};
+const yearSelect = document.getElementById('year-select');
+const semesterSelect = document.getElementById('semester-select');
+const grid = document.getElementById('timetable-grid');
+
+function populateSemesters() {
+  const year = yearSelect.value;
+  semesterSelect.innerHTML = '';
+  (YEAR_SEMESTER_MAP[year] || []).forEach(s => {
+    const option = new Option(s, s);
+    if (year === selectedYear && s === selectedSemester) option.selected = true;
+    semesterSelect.appendChild(option);
+  });
+}
+function go() {
+  window.location.href = `{{ url_for('timetable_list') }}?year=${encodeURIComponent(yearSelect.value)}&semester=${encodeURIComponent(semesterSelect.value)}`;
+}
+yearSelect.addEventListener('change', () => { populateSemesters(); go(); });
+semesterSelect.addEventListener('change', go);
+populateSemesters();
+
+// Paste a complete TSV matrix directly into the selected cell.
+grid.addEventListener('paste', (event) => {
+  const text = (event.clipboardData || window.clipboardData).getData('text');
+  if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
+  const target = event.target.closest('.matrix-cell');
+  if (!target) return;
+  event.preventDefault();
+  const cells = Array.from(grid.querySelectorAll('.matrix-cell'));
+  const start = cells.indexOf(target);
+  if (start < 0) return;
+  const rows = text.replace(/\r/g, '').split('\n').filter(r => r.length);
+  const cols = 8;
+  rows.forEach((row, r) => row.split('\t').forEach((value, c) => {
+    const idx = start + r * cols + c;
+    if (cells[idx]) cells[idx].value = value.trim();
+  }));
+});
+
+document.getElementById('matrix-form').addEventListener('submit', () => {
+  const rows = Array.from(grid.querySelectorAll('tbody tr')).map(tr => ({
+    day: tr.dataset.day,
+    cells: Array.from(tr.querySelectorAll('.matrix-cell')).map(input => input.value.trim())
+  }));
+  document.getElementById('matrix-json').value = JSON.stringify(rows);
+  document.getElementById('matrix-year').value = yearSelect.value;
+  document.getElementById('matrix-semester').value = semesterSelect.value;
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  if (!confirm(`Reset ${yearSelect.value} — ${semesterSelect.value}? This will clear every timetable entry for this semester.`)) return;
+  document.getElementById('reset-year').value = yearSelect.value;
+  document.getElementById('reset-semester').value = semesterSelect.value;
+  document.getElementById('reset-form').submit();
+});
+</script>
 {% endblock %}

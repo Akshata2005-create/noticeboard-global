@@ -11,10 +11,7 @@
 <body>
 
 <div class="board">
-  <header class="topbar {{ 'has-banner' if site_settings.banner_filename }}"
-    {% if site_settings.banner_filename %}
-    style="background-image: url('{{ url_for('static', filename='branding/' + site_settings.banner_filename) }}');"
-    {% endif %}>
+  <header class="topbar">
     <div class="topbar-scrim"></div>
     <div class="topbar-content">
       <div class="topbar-left">
@@ -23,7 +20,6 @@
       </div>
       <div class="topbar-right">
         <span id="clock">--:--</span>
-        <span class="idle-caption" id="idle-caption">Notices will appear here once posted</span>
       </div>
     </div>
   </header>
