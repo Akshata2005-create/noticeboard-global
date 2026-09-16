@@ -66,7 +66,7 @@
               {% set slot_start = ["09:00","10:00","11:00","11:15","12:15","13:15","14:00","15:00"][i] %}
               {% set slot_end = ["10:00","11:00","11:15","12:15","13:15","14:00","15:00","16:00"][i] %}
               {% set found = namespace(value='') %}
-              {% for e in entries %}
+              {% for e in selected_matrix.entries %}
                 {% if e.day == day and e.start_time.strftime('%H:%M') == slot_start and e.end_time.strftime('%H:%M') == slot_end %}
                   {% set found.value = (e.subject_code ~ (' - ' if e.subject_code and e.teacher_name else '') ~ (e.teacher_name or '')) %}
                 {% endif %}
@@ -81,7 +81,7 @@
 
       <div class="matrix-actions">
         <button type="submit" class="btn btn-primary">Save Timetable</button>
-        <button type="button" class="btn btn-ghost" id="reset-btn">Reset Timetable</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn">Reset Timetable (clear everything)</button>
         <span class="hint">Click a cell and type. You can also paste the timetable entries directly from Excel/Sheets.</span>
       </div>
     </form>
@@ -170,7 +170,14 @@ document.getElementById('matrix-form').addEventListener('submit', () => {
 });
 
 document.getElementById('reset-btn').addEventListener('click', () => {
-  if (!confirm(`Reset ${yearSelect.value} — ${semesterSelect.value}? This will clear every timetable entry for this semester.`)) return;
+  const sure = confirm(
+    'Reset the ENTIRE timetable?\n\n' +
+    'This will permanently clear every saved timetable entry for 2nd, 3rd, and 4th Year — all semesters. ' +
+    'The timetable will become completely empty, ready for a new intake.\n\n' +
+    'Your admin login, board settings, and notices will NOT be affected.\n\n' +
+    'This cannot be undone. Click OK to continue.'
+  );
+  if (!sure) return;
   document.getElementById('reset-year').value = yearSelect.value;
   document.getElementById('reset-semester').value = semesterSelect.value;
   document.getElementById('reset-form').submit();

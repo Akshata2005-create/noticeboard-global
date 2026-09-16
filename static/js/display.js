@@ -23,7 +23,8 @@
   let currentPopupItem = null;
   let latestImportantIds = new Set();
 
-  const POLL_MS = 30000;
+  const POLL_MS = 30000; // slow safety-net poll; the SSE channel below is the fast path
+  const EVENTS_URL = "/api/events";
   const DEFAULT_DURATION = 10;
   const DEFAULT_POPUP_DURATION = 15;
   const TIMETABLE_SLIDE_SECONDS = 10; // how long the "current lecture status" slide stays up
@@ -38,11 +39,9 @@
   // Always uses the notice's actual posted (created) date, never the
   // updated date alone, so the display never shows the wrong date.
   function metaLine(item) {
-    const parts = [];
-    if (item.posted_at) parts.push(`Posted ${item.posted_at}`);
-    if (item.author) parts.push(`by ${item.author}`);
-    if (item.was_edited && item.updated_at) parts.push(`edited ${item.updated_at}`);
-    return parts.join("  ·  ");
+    // Image-post footer: show only the posting date. Keep the footer
+    // deliberately minimal — no category, title, author, or time.
+    return item.posted_at ? `Posted on ${item.posted_at.split(",")[0]}` : "";
   }
 
   function updateClock() {
@@ -63,24 +62,10 @@
   }
 
   function buildCaption(item) {
+    // For image posts, keep only a tiny date footer. The image remains the
+    // main focus and the footer never becomes a large bottom bar.
     const wrap = document.createElement("div");
-    wrap.className = "caption-bar" + (item.has_title ? "" : " no-title");
-    wrap.style.setProperty("--cat", item.category_color);
-
-    const badge = document.createElement("div");
-    badge.className = "slide-badge";
-    badge.style.setProperty("--cat", item.category_color);
-    badge.textContent = item.category_label;
-    wrap.appendChild(badge);
-
-    // Title is optional — only render it if the admin actually gave the
-    // notice one. The meta line (posted date) always shows either way.
-    if (item.has_title) {
-      const title = document.createElement("h1");
-      title.className = "slide-title";
-      title.textContent = item.title;
-      wrap.appendChild(title);
-    }
+    wrap.className = "caption-bar minimal-date";
 
     const meta = document.createElement("div");
     meta.className = "slide-meta";
@@ -105,7 +90,19 @@
     flag.appendChild(flagText);
     popupCard.appendChild(flag);
 
-    if (item.images && item.images.length) {
+    if (item.display_type === "video" && item.video) {
+      const media = document.createElement("div");
+      media.className = "important-popup-media";
+      const video = document.createElement("video");
+      video.src = item.video.url;
+      video.autoplay = true;
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.controls = false;
+      media.appendChild(video);
+      popupCard.appendChild(media);
+    } else if (item.images && item.images.length) {
       const media = document.createElement("div");
       media.className = "important-popup-media";
       const img = document.createElement("img");
@@ -243,26 +240,26 @@
 
   // Turns the /api/timetable/current response into a slide-shaped object
   // that buildSlide() knows how to render (display_type: "timetable"),
-  // alongside the regular notice slides.
+  // alongside the regular notice slides. `entries` is a list because
+  // multiple classes (different years/sections) can share the same day
+  // and time slot — there's no fixed year1..year4 layout any more.
   function timetableSlideFrom(status) {
+    const entries = status.entries || [];
     return {
-      id: `timetable-${status.id}`,
+      id: `timetable-${status.day}-${status.time_range}-${entries.map((e) => e.year + e.semester + e.teacher_name).join("|")}`,
       display_type: "timetable",
       duration_seconds: TIMETABLE_SLIDE_SECONDS,
       day: status.day,
       time_range: status.time_range,
-      year1_faculty: status.year1_faculty,
-      year2_faculty: status.year2_faculty,
-      year3_faculty: status.year3_faculty,
-      year4_faculty: status.year4_faculty,
+      entries: entries,
     };
   }
 
-  // Interleaves the current-lecture-status slide with the regular notice
-  // rotation — timetable slide, then a notice, then the timetable slide
-  // again, and so on — so the two alternate continuously. If there are no
-  // notices at all, the timetable slide plays on its own; if there's no
-  // current lecture slot, the notice rotation plays exactly as before.
+  // Inserts the current-lecture-status slide into the normal notice rotation.
+  // A normal notice is shown first; the timetable follows it, then the next
+  // notice, and so on. If there are no notices, the timetable plays alone.
+  // This keeps the board feeling like a noticeboard while still surfacing the
+  // live lecture status during the same rotation.
   function buildCombinedRotation(notices, timetableStatus) {
     if (!timetableStatus || !timetableStatus.active) {
       return notices.slice();
@@ -273,8 +270,8 @@
     }
     const combined = [];
     notices.forEach((notice) => {
-      combined.push(ttSlide);
       combined.push(notice);
+      combined.push(ttSlide);
     });
     return combined;
   }
@@ -282,10 +279,32 @@
   // A cheap "did anything change" fingerprint covering both the notice
   // rotation and the current timetable slot, used to decide whether the
   // stage needs to rebuild.
+
+
+  // A cheap "did anything change" fingerprint covering both the notice
+  // rotation and the current timetable slot(s), used to decide whether the
+  // stage needs to rebuild.
   function comboSignature(notices, timetableStatus) {
-    const noticeIds = notices.map((n) => n.id).join(",");
-    const ttKey = timetableStatus && timetableStatus.active ? `tt-${timetableStatus.id}` : "tt-none";
-    return `${noticeIds}|${ttKey}`;
+    // Include the visible notice content, not only its id. This means an
+    // edited notice is refreshed on the display without requiring a page
+    // reload.
+    const noticeKey = notices.map((n) => [
+      n.id,
+      n.title,
+      n.text_content,
+      n.display_type,
+      n.category,
+      n.images,
+      n.video,
+      n.updated_at,
+      n.duration_seconds
+    ]).join("||");
+
+    const entries = (timetableStatus && timetableStatus.entries) || [];
+    const ttKey = timetableStatus && timetableStatus.active
+      ? `tt-${timetableStatus.day}-${timetableStatus.time_range}-${entries.map((e) => e.year + e.semester + e.teacher_name).join("|")}`
+      : "tt-none";
+    return `${noticeKey}|${ttKey}`;
   }
 
   function buildSlide(item) {
@@ -307,22 +326,21 @@
       subheading.textContent = "CURRENT LECTURE STATUS";
       wrap.appendChild(subheading);
 
+      // No fixed year1..year4 columns any more — just one row per active
+      // class entry, whatever years/semesters happen to have a class right
+      // now. Entries without a teacher name are filtered out server-side
+      // already, so every row here is guaranteed to be real and complete.
       const rows = document.createElement("div");
       rows.className = "timetable-rows";
-      [
-        ["1st Year", item.year1_faculty],
-        ["2nd Year", item.year2_faculty],
-        ["3rd Year", item.year3_faculty],
-        ["4th Year", item.year4_faculty],
-      ].forEach(([label, faculty]) => {
+      (item.entries || []).forEach((entry) => {
         const row = document.createElement("div");
         row.className = "timetable-row";
         const yearLabel = document.createElement("span");
         yearLabel.className = "year-label";
-        yearLabel.textContent = label;
+        yearLabel.textContent = entry.no_class ? `${entry.year}  (${entry.semester || ""})` : `${entry.year}  (${entry.semester || ""})`;
         const facultyName = document.createElement("span");
         facultyName.className = "faculty-name";
-        facultyName.textContent = faculty;
+        facultyName.textContent = entry.no_class ? "NO CLASS" : (entry.teacher_name || "NO CLASS");
         row.appendChild(yearLabel);
         row.appendChild(facultyName);
         rows.appendChild(row);
@@ -331,7 +349,7 @@
 
       const slotTime = document.createElement("div");
       slotTime.className = "timetable-slot-time";
-      slotTime.textContent = `${item.day}  ·  ${item.time_range}`;
+      slotTime.textContent = item.time_range;
       wrap.appendChild(slotTime);
 
       el.appendChild(wrap);
@@ -364,6 +382,29 @@
       wrap.appendChild(meta);
 
       el.appendChild(wrap);
+      return el;
+    }
+
+    if (item.display_type === "video") {
+      const wrap = document.createElement("div");
+      wrap.className = "slide-video-wrap";
+      const video = document.createElement("video");
+      if (item.video) video.src = item.video.url;
+      video.autoplay = true;
+      video.loop = true;
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.controls = false;
+      // If the video can't load/play, fail gracefully and keep the
+      // slideshow moving rather than getting stuck on a broken slide.
+      video.addEventListener("error", () => advance());
+      wrap.appendChild(video);
+      el.appendChild(wrap);
+      requestAnimationFrame(() => {
+        const playPromise = video.play();
+        if (playPromise && playPromise.catch) playPromise.catch(() => advance());
+      });
       return el;
     }
 
@@ -401,7 +442,9 @@
         const img = document.createElement("img");
         img.src = im.url;
         img.style.objectFit = item.image_fit || "cover";
-        if (idx === 0) img.classList.add("shown");
+        if (idx === 0) {
+          img.classList.add("shown");
+        }
         media.appendChild(img);
       });
     }
@@ -456,7 +499,7 @@
     // a slim clock strip so the photo reads like a real signage poster.
     // Text posts and the timetable status slide keep the full topbar since
     // there's no photo to compete with for space.
-    const isPhotoSlide = item.display_type === "image" || item.display_type === "grid";
+    const isPhotoSlide = item.display_type === "image" || item.display_type === "grid" || item.display_type === "video";
     board.classList.toggle("photo-mode", isPhotoSlide);
 
     renderDots();
@@ -506,37 +549,97 @@
   }
 
   async function poll() {
+    // Load notices independently from the timetable. A timetable/API error
+    // must never prevent normal notices from reaching the display screen.
     try {
-      const [noticesRes, timetableRes] = await Promise.all([
-        fetch("/api/notices", { cache: "no-store" }),
-        fetch("/api/timetable/current", { cache: "no-store" }),
-      ]);
+      const noticesRes = await fetch("/api/notices", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" }
+      });
+
+      if (!noticesRes.ok) {
+        throw new Error(`Notice API returned HTTP ${noticesRes.status}`);
+      }
+
       const data = await noticesRes.json();
-      const timetableStatus = await timetableRes.json();
-
       const oldSignature = comboSignature(latestNotices, latestTimetableStatus);
-      const newSignature = comboSignature(data.rotation, timetableStatus);
 
-      renderTicker(data.ticker);
-      handleImportantNotices(data.ticker);
+      const safeRotation = Array.isArray(data.rotation) ? data.rotation : [];
+      const safeTicker = Array.isArray(data.ticker) ? data.ticker : [];
 
-      latestNotices = data.rotation;
+      renderTicker(safeTicker);
+      handleImportantNotices(safeTicker);
+
+      latestNotices = safeRotation;
+
+      // Keep the last known timetable state if that endpoint temporarily
+      // fails. Notices can therefore continue rotating normally.
+      let timetableStatus = latestTimetableStatus;
+      try {
+        const timetableRes = await fetch("/api/timetable/current", {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" }
+        });
+        if (timetableRes.ok) {
+          const freshTimetable = await timetableRes.json();
+          if (freshTimetable && typeof freshTimetable === "object") {
+            timetableStatus = freshTimetable;
+          }
+        } else {
+          console.warn(`Timetable API returned HTTP ${timetableRes.status}`);
+        }
+      } catch (timetableErr) {
+        console.warn("Timetable API unavailable; continuing with notices.", timetableErr);
+      }
+
       latestTimetableStatus = timetableStatus;
 
-      const combined = buildCombinedRotation(data.rotation, timetableStatus);
-      updateIdleState(combined.length > 0, data.ticker.length > 0);
+      const combined = buildCombinedRotation(safeRotation, timetableStatus);
+      updateIdleState(combined.length > 0, safeTicker.length > 0);
 
-      if (newSignature !== oldSignature) {
+      const newSignature = comboSignature(safeRotation, timetableStatus);
+
+      if (newSignature !== oldSignature || rotation.length === 0) {
         rotation = combined;
         currentIndex = 0;
         renderStageForCurrent();
         scheduleNext();
       }
     } catch (err) {
-      console.error("Failed to load notices/timetable", err);
+      console.error("Failed to load notices", err);
     }
   }
 
+  // ---------- Live sync (Server-Sent Events) ----------
+  // One common channel for the whole display (notices + timetable). The
+  // server pushes an "update" event the moment anything changes in the
+  // database, and we simply re-run the same poll() used for the periodic
+  // refresh — no full page reload, no reopening the Display URL. The
+  // interval poll() above/below keeps running regardless, as a safety net
+  // in case a proxy between here and the server ever blocks SSE.
+  function connectLiveSync() {
+    if (typeof EventSource === "undefined") {
+      console.warn("EventSource not supported; relying on periodic polling only.");
+      return;
+    }
+    let source;
+    try {
+      source = new EventSource(EVENTS_URL);
+    } catch (err) {
+      console.warn("Could not open live sync channel; relying on periodic polling only.", err);
+      return;
+    }
+    source.addEventListener("update", () => {
+      poll();
+    });
+    source.onerror = () => {
+      // The browser's EventSource retries this automatically (see the
+      // "retry:" hint sent by the server); nothing to do here except let
+      // the fallback interval poll keep the display correct meanwhile.
+    };
+  }
+
   poll();
+  connectLiveSync();
   setInterval(poll, POLL_MS);
 })();

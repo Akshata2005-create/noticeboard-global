@@ -6,12 +6,14 @@ import uuid
 import re
 import difflib
 import shutil
+import hashlib
+import time
 from datetime import datetime, date
 from functools import wraps
 
 from flask import (
     Flask, render_template, redirect, url_for, request,
-    flash, jsonify, abort
+    flash, jsonify, abort, Response, stream_with_context
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -58,7 +60,7 @@ ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS  # kept for backward compatibility
 
 DEFAULT_BOARD_TITLE = "KLS VDIT EEE DEPARTMENT SMART NOTICE BOARD"
 GRID_PHOTO_COUNT = 2     # grid mode is fixed at exactly 2 photos, side-by-side 50/50
-ASSET_VERSION = "15"  # bump this whenever display.css/display.js change, to bust the 1-year static cache
+ASSET_VERSION = "16"  # bump this whenever display.css/display.js change, to bust the 1-year static cache
 
 # ---- OCR config ----
 # Render/Linux normally exposes Tesseract as /usr/bin/tesseract after the
@@ -1334,16 +1336,20 @@ def save_timetable_matrix():
 @login_required
 @admin_required
 def reset_timetable_matrix():
-    """Clear every saved entry for one selected year + semester."""
+    """Full reset: clear every saved timetable entry for every year and
+    semester, so the timetable is completely empty and ready for a new
+    intake. This does NOT touch the User/Settings tables, notices, uploads,
+    or any other data — only rows in TimetableEntry are deleted."""
     year = request.form.get("year", "").strip()
     semester = request.form.get("semester", "").strip()
-    if year not in YEAR_SEMESTER_MAP or semester not in YEAR_SEMESTER_MAP[year]:
-        flash("Please choose a valid year and semester.", "error")
-        return redirect(url_for("timetable_list"))
+    if year not in YEAR_SEMESTER_MAP:
+        year = TIMETABLE_YEARS[0]
+    if semester not in YEAR_SEMESTER_MAP.get(year, []):
+        semester = YEAR_SEMESTER_MAP[year][0]
     try:
-        TimetableEntry.query.filter_by(year=year, semester=semester).delete(synchronize_session=False)
+        TimetableEntry.query.delete(synchronize_session=False)
         db.session.commit()
-        flash(f"{year} — {semester} timetable has been reset. All entries were cleared.", "success")
+        flash("The timetable has been reset. Every year and semester is now empty and ready for a new intake.", "success")
     except Exception as exc:
         db.session.rollback()
         flash(f"Could not reset timetable: {exc}", "error")
@@ -1583,8 +1589,11 @@ def display():
     return render_template("display.html", categories=CATEGORIES)
 
 
-@app.route("/api/notices")
-def api_notices():
+def _notices_payload():
+    """The live rotation/ticker data for the public display. This is the
+    single source of truth used by /api/notices AND by the SSE change-
+    detector below, so the two can never drift out of sync with each other.
+    """
     notices = (
         Notice.query.filter_by(is_active=True)
         .order_by(Notice.priority.desc(), Notice.created_at.desc())
@@ -1595,17 +1604,22 @@ def api_notices():
     rotation = [n.to_display_dict() for n in live if n.category != "important"]
     ticker = [n.to_display_dict() for n in live if n.category == "important"]
 
-    return jsonify({
-        "rotation": rotation,
-        "ticker": ticker,
-        "server_time": datetime.now().strftime("%A, %d %B %Y  |  %I:%M %p"),
-    })
+    return {"rotation": rotation, "ticker": ticker}
 
 
-@app.route("/api/timetable/current")
-def api_timetable_current():
+@app.route("/api/notices")
+def api_notices():
+    payload = _notices_payload()
+    payload["server_time"] = datetime.now().strftime("%A, %d %B %Y  |  %I:%M %p")
+    return jsonify(payload)
+
+
+def _timetable_payload():
     """Return one row per year. The admin publishes exactly one semester for
-    each year; only the currently ongoing period is considered a lecture."""
+    each year; only the currently ongoing period is considered a lecture.
+    Single source of truth for /api/timetable/current AND the SSE
+    change-detector below.
+    """
     now = datetime.now()
     today = now.strftime("%A")
     published = TimetableEntry.query.filter_by(day=today, published=True).all()
@@ -1619,7 +1633,7 @@ def api_timetable_current():
     ordered_years = TIMETABLE_YEARS
 
     if not current:
-        return jsonify({"active": False, "entries": [], "day": today})
+        return {"active": False, "entries": [], "day": today}
 
     current_by_year = {e.year: e for e in current}
     time_ranges = sorted({e.time_range_label() for e in current})
@@ -1638,7 +1652,81 @@ def api_timetable_current():
             "subject_title": e.subject_title if e else "",
             "no_class": not bool(e and e.has_teacher()),
         })
-    return jsonify({"active": True, "day": today, "time_range": common_time, "entries": entries})
+    return {"active": True, "day": today, "time_range": common_time, "entries": entries}
+
+
+@app.route("/api/timetable/current")
+def api_timetable_current():
+    return jsonify(_timetable_payload())
+
+
+# --------------------------------------------------------------------------
+# Live sync (Server-Sent Events) — one common channel for the whole public
+# Display (notices AND timetable). The database is the only source of
+# truth: every ~1.5s this endpoint re-reads the exact same data the
+# /api/notices and /api/timetable/current routes serve, hashes it, and — the
+# moment that hash changes (a notice posted/edited/deleted, a timetable
+# added/edited/deleted/reset, or the current lecture period rolling over) —
+# pushes a tiny "update" event down the already-open connection. The display
+# page (display.js) reacts by re-fetching those same two endpoints
+# immediately, no manual refresh/reopen/restart required. This deliberately
+# does NOT hook into every individual admin route — it just watches the
+# database — so posting/deleting/editing notices or timetable entries from
+# any admin route (present or future) is picked up automatically.
+# --------------------------------------------------------------------------
+SSE_POLL_SECONDS = 1.5          # how often the stream re-checks the database
+SSE_HEARTBEAT_SECONDS = 15      # comment ping so idle proxies don't drop the connection
+SSE_MAX_CONNECTION_SECONDS = 3600  # recycle the stream hourly; EventSource auto-reconnects
+
+
+def _display_signature():
+    """A short fingerprint of everything the public display currently shows.
+    Changes if and only if the rendered display would change."""
+    payload = {"notices": _notices_payload(), "timetable": _timetable_payload()}
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@app.route("/api/events")
+def api_events():
+    def event_stream():
+        last_sig = None
+        idle_seconds = 0.0
+        started = time.monotonic()
+        # Tell the browser's EventSource how long to wait before
+        # auto-reconnecting if this stream ever drops.
+        yield "retry: 3000\n\n"
+        while time.monotonic() - started < SSE_MAX_CONNECTION_SECONDS:
+            try:
+                sig = _display_signature()
+            except Exception:
+                sig = None
+            finally:
+                # Release the DB connection back to the pool between checks
+                # instead of holding it for the whole lifetime of the stream.
+                db.session.remove()
+
+            if sig is not None and sig != last_sig:
+                last_sig = sig
+                yield f"event: update\ndata: {sig}\n\n"
+                idle_seconds = 0.0
+            else:
+                idle_seconds += SSE_POLL_SECONDS
+                if idle_seconds >= SSE_HEARTBEAT_SECONDS:
+                    yield ": heartbeat\n\n"
+                    idle_seconds = 0.0
+
+            time.sleep(SSE_POLL_SECONDS)
+        # Stream recycled — the client's EventSource reconnects automatically.
+
+    response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    # Disable response buffering on proxies in front of the app (Render's
+    # router included) so events are flushed to the client immediately
+    # instead of being held until the buffer fills.
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
 
 
 # --------------------------------------------------------------------------

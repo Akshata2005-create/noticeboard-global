@@ -44,13 +44,10 @@ html, body {
   flex-shrink: 0;
   height: 96px;
   background: var(--panel);
-  background-size: cover;
-  background-position: center;
   z-index: 5;
   overflow: hidden;
   transition: height .7s cubic-bezier(.4,0,.2,1);
 }
-.topbar.has-banner { height: 148px; }
 
 /* Photo-mode: while an image/grid post is on screen, the topbar
    collapses to a slim strip (just the clock) so the photo gets almost the
@@ -90,28 +87,12 @@ html, body {
 .board.idle .topbar-right { order: 2; }
 .board.idle .brand { font-size: 56px; }
 .board.idle #clock { font-size: 22px; }
-.board.idle .idle-caption {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-}
-.idle-caption { display: none; }
 
 .topbar-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg,
-    rgba(14,20,28,0.35) 0%,
-    rgba(14,20,28,0.55) 45%,
-    rgba(14,20,28,0.92) 100%);
-  transition: background .7s ease;
-}
-.topbar:not(.has-banner) .topbar-scrim {
   background: linear-gradient(180deg, rgba(14,20,28,0.9), rgba(14,20,28,0.98));
+  transition: background .7s ease;
 }
 .board.idle .topbar-scrim {
   background: linear-gradient(180deg, rgba(14,20,28,0.25) 0%, rgba(14,20,28,0.55) 65%, rgba(14,20,28,0.85) 100%);
@@ -222,6 +203,21 @@ html, body {
 }
 .slide-media-full img.shown { opacity: 1; }
 
+/* Video slides — full-screen, autoplay/loop/muted on the signage screen. */
+.slide-video-wrap {
+  position: absolute;
+  inset: 0;
+  background: #05080C;
+}
+.slide-video-wrap video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
 /* Grid display: exactly 2 photos, side by side, a clean 50% / 50% split.
    A thin visible border sits between the two tiles (a small gap that
    reveals the board's background colour underneath), so each photo reads
@@ -258,40 +254,30 @@ html, body {
   object-fit: cover;
 }
 
-/* Solid caption bar below the photo(s) — title/date/category live here,
-   fully separated from the image so nothing ever overlaps it. */
+/* Minimal date footer below image posts. It uses only a few pixels of
+   vertical space: no badge, title, author, time, border, or large panel. */
 .caption-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  column-gap: 16px;
-  row-gap: 4px;
-  padding: 12px 40px;
-  background: var(--panel);
-  border-top: 3px solid var(--cat);
-  max-height: 96px;
+  padding: 3px 12px 4px;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  max-height: 28px;
   overflow: hidden;
 }
-.caption-bar .slide-badge { margin-bottom: 0; padding: 5px 13px; font-size: 12px; flex-shrink: 0; }
-.caption-bar .slide-title {
-  font-size: 22px;
+.caption-bar.minimal-date .slide-meta {
   margin: 0;
-  max-width: 60%;
-  line-height: 1.25;
-  text-align: center;
-  /* keep a single-line title from ever pushing the bar taller / crowding the image */
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ink-dim);
+  letter-spacing: 0.03em;
   white-space: nowrap;
-  flex: 0 1 auto;
-  min-width: 0;
 }
-.caption-bar .slide-meta { margin-top: 0; flex-shrink: 0; }
-/* When there's no title (title is optional when posting), the meta line —
-   which always carries the posted date — becomes the primary text. */
-.caption-bar.no-title .slide-meta { font-size: 15px; }
 
 /* Text-only slide — centered, typographic, institutional-announcement
    style. Shows only the post's own title (if any) and message content —
@@ -364,7 +350,7 @@ html, body {
   flex-direction: column;
   gap: 22px;
   width: 100%;
-  max-width: 920px;
+  max-width: 1080px;
 }
 .timetable-row {
   display: flex;
@@ -376,8 +362,8 @@ html, body {
 }
 .timetable-row .year-label {
   font-family: var(--font-mono);
-  font-size: 22px;
-  letter-spacing: 0.06em;
+  font-size: 24px;
+  letter-spacing: 0.04em;
   color: var(--ink-dim);
   white-space: nowrap;
 }
@@ -557,8 +543,9 @@ html, body {
   background: #05080C;
   overflow: hidden;
   flex-shrink: 0;
+  position: relative;
 }
-.important-popup-media img {
+.important-popup-media img, .important-popup-media video {
   width: 100%;
   max-height: 40vh;
   object-fit: contain;
@@ -649,7 +636,7 @@ html, body {
   .slide-title { font-size: 34px; }
   .slide-text { font-size: 22px; max-width: 100%; }
   .topbar { padding: 16px 22px; }
-  .caption-bar { padding: 16px 24px; }
+  .caption-bar { padding: 3px 12px 4px; max-height: 28px; }
   .caption-bar .slide-title { font-size: 24px; }
   .slide-text-wrap { padding: 48px 28px; }
   .slide-timetable-wrap { padding: 48px 28px; }

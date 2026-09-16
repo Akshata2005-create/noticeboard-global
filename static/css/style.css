@@ -152,7 +152,9 @@ button { font-family: inherit; cursor: pointer; }
 
 .main {
   padding: 32px 40px 60px;
-  max-width: 1200px;
+  max-width: none;
+  width: 100%;
+  min-width: 0;
 }
 
 .page-head {
@@ -469,6 +471,51 @@ input:focus, textarea:focus, select:focus {
   cursor: pointer;
 }
 
+/* ---------- OCR panel ---------- */
+.ocr-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.ocr-panel input[type=file] { width: auto; flex: 1; min-width: 200px; }
+.ocr-status { font-size: 12.5px; color: var(--ink-dim); }
+.ocr-status.success { color: #2E8B72; }
+.ocr-status.error { color: #C1443C; }
+
+.info-banner {
+  background: #3E7CB11a;
+  border: 1px solid #3E7CB155;
+  color: #8FBEE0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+/* ---------- Timetable ---------- */
+.timetable-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.timetable-entry-meta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13.5px; }
+.timetable-entry-day { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); min-width: 80px; }
+.timetable-entry-time { color: var(--ink-dim); }
+.timetable-entry-year { font-weight: 600; }
+.timetable-entry-teacher { color: var(--ink); }
+.timetable-entry-teacher.blank { color: var(--ink-dim); font-style: italic; }
+.timetable-day-group { margin-bottom: 24px; }
+.timetable-day-heading { font-family: var(--font-display); font-size: 16px; margin-bottom: 10px; color: var(--ink); }
+
 /* ---------- Flash messages ---------- */
 .flash-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .flash {
@@ -524,3 +571,9 @@ input:focus, textarea:focus, select:focus {
   .two-col { grid-template-columns: 1fr; }
   .timetable-faculty-grid { grid-template-columns: 1fr; }
 }
+
+/* Manual timetable matrix */
+.timetable-entry-matrix th { white-space: nowrap; }
+.timetable-entry-matrix td { min-height: 92px; }
+.matrix-empty { display:block; min-height:72px; padding:26px 8px; text-align:center; border:1px dashed rgba(255,255,255,.14); border-radius:8px; color:inherit; text-decoration:none; opacity:.7; }
+.matrix-empty:hover { opacity:1; border-color:rgba(255,255,255,.35); }

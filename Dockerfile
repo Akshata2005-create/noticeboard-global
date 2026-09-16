@@ -11,4 +11,10 @@ COPY . .
 
 ENV TESSERACT_CMD=/usr/bin/tesseract
 EXPOSE 5000
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "app:app"]
+# --worker-class gthread + --threads: the public Display now holds one
+# long-lived Server-Sent Events connection open per viewer (see /api/events
+# in app.py). Plain sync workers would let one open Display tab occupy an
+# entire worker process indefinitely, starving the admin portal. Threaded
+# workers let each process serve several requests (including SSE streams)
+# concurrently, with no extra dependency (gthread ships with gunicorn).
+CMD ["gunicorn", "-w", "2", "--worker-class", "gthread", "--threads", "4", "-b", "0.0.0.0:5000", "app:app"]
