@@ -1674,7 +1674,7 @@ def api_timetable_current():
 # database — so posting/deleting/editing notices or timetable entries from
 # any admin route (present or future) is picked up automatically.
 # --------------------------------------------------------------------------
-SSE_POLL_SECONDS = 1.5          # how often the stream re-checks the database
+SSE_POLL_SECONDS = 3            # how often the stream re-checks the database (kept modest for low-resource hosting like Render's free tier)
 SSE_HEARTBEAT_SECONDS = 15      # comment ping so idle proxies don't drop the connection
 SSE_MAX_CONNECTION_SECONDS = 3600  # recycle the stream hourly; EventSource auto-reconnects
 
@@ -1690,12 +1690,20 @@ def _display_signature():
 @app.route("/api/events")
 def api_events():
     def event_stream():
-        last_sig = None
         idle_seconds = 0.0
         started = time.monotonic()
         # Tell the browser's EventSource how long to wait before
         # auto-reconnecting if this stream ever drops.
         yield "retry: 3000\n\n"
+        # Baseline the signature at connect time so a fresh/reconnected
+        # stream doesn't immediately fire a spurious "update" for content
+        # the client already has — only real changes push after this.
+        try:
+            last_sig = _display_signature()
+        except Exception:
+            last_sig = None
+        finally:
+            db.session.remove()
         while time.monotonic() - started < SSE_MAX_CONNECTION_SECONDS:
             try:
                 sig = _display_signature()
