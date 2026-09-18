@@ -68,7 +68,7 @@
               {% set found = namespace(value='') %}
               {% for e in selected_matrix.entries %}
                 {% if e.day == day and e.start_time.strftime('%H:%M') == slot_start and e.end_time.strftime('%H:%M') == slot_end %}
-                  {% set found.value = (e.subject_code ~ (' - ' if e.subject_code and e.teacher_name else '') ~ (e.teacher_name or '')) %}
+                  {% set found.value = ((e.subject_code or '') ~ (' - ' if e.subject_code and e.teacher_name else '') ~ (e.teacher_name or '')) %}
                 {% endif %}
               {% endfor %}
               <td><textarea class="matrix-cell" autocomplete="off" spellcheck="false" aria-label="{{ day }} {{ slot_start }}">{{ found.value|e }}</textarea></td>
